@@ -1,0 +1,139 @@
+SELECT * 
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+order by 3,4
+
+SELECT * 
+FROM `my-bigquery-project-11.coviddata.covid_vaccinations`
+order by 3,4
+
+
+##Select data that we are going to be using 
+
+SELECT Location,date,total_cases, new_cases, total_deaths, population
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+order by 1,2
+
+##Looking at total cases vs total deaths
+--shows the likelyhood of dying if you contract covid in your country
+
+SELECT Location, date, total_cases, total_deaths,(total_deaths/total_cases)*100 as deathpercentage
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+WHERE Location like '%States%'
+order by 1,2
+
+##looking at the total cases vs the population
+##shows the percentage that got covid
+
+SELECT Location, date, total_cases, Population,(total_cases/population)*100 as infectedpercentage
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+WHERE Location like '%Nigeria%'
+order by 1,2
+##can be used for a viz
+
+##looking at Nigeria's daily infection rate compared to population
+
+SELECT Location, date, population, total_cases,(total_cases/population)*100 as infectedpercentage
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+WHERE Location like '%Nigeria%'
+order by 5 desc
+
+##looking at countries with the highest infection rate compared to population
+
+SELECT Location, population, max(total_cases) as HighestinfectionCount, max((total_cases/population))*100 as infectedpercentage
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+group by location, population
+order by infectedpercentage desc
+
+##looking at the countries with the highest death count per population removing the continents
+
+SELECT Location, max(cast(total_deaths as int)) as TotalDeathCount
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+where continent is not null
+group by location
+order by TotalDeathCount desc
+
+##breaking things down by continent
+
+SELECT location, population, max(cast(total_deaths as int)) as TotalDeathCount
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+where continent is null
+group by location, population
+order by TotalDeathCount desc
+
+##showing the continents with the highest death count
+
+SELECT continent, max(cast(total_deaths as int)) as TotalDeathCount
+FROM `my-bigquery-project-11.coviddata.covid_deaths`
+where continent is not null
+group by continent
+order by TotalDeathCount desc
+
+##GLOBAL NUMBERS
+
+SELECT date, sum(new_cases) as total_cases, sum(cast(new_deaths as int)) as total_deaths, sum(cast(new_deaths as int))/sum(new_cases)*100 as DeathPercentage
+from `my-bigquery-project-11.coviddata.covid_deaths`
+where continent is not null and new_cases != 0 and new_deaths !=0
+group by date
+order by DeathPercentage desc
+
+##now adding in the covid vaccination data
+
+SELECT * FROM `my-bigquery-project-11.coviddata.covid_vaccinations`
+
+##joined the covid vaccination and covid death tables
+##looking at total population vs vaccinations
+
+SELECT cd.continent, cd.location, cd.date, cd.population, cv.new_vaccinations
+FROM `my-bigquery-project-11.coviddata.covid_deaths` cd
+join `my-bigquery-project-11.coviddata.covid_vaccinations` cv 
+  on cd.location = cv.location and cd.date = cv.date
+where cd.continent is not null
+order by 2,3
+
+
+##creating a table with the rolling vaccination count
+
+SELECT cd.continent, cd.location, cd.date, cd.population, cv.new_vaccinations, sum(cast(cv.new_vaccinations as int)) OVER (PARTITION BY cd.location order by cd.location, cd.date) as rollingvaccinationcount
+FROM `my-bigquery-project-11.coviddata.covid_deaths` cd
+join `my-bigquery-project-11.coviddata.covid_vaccinations` cv 
+  on cd.location = cv.location and cd.date = cv.date
+where cd.continent is not null
+order by 2,3
+
+##USE CTE
+
+WITH PopvsVac as
+(
+SELECT cd.continent, cd.location, cd.date, cd.population, cv.new_vaccinations, sum(cast(cv.new_vaccinations as int)) OVER (PARTITION BY cd.location order by cd.location, cd.date) as rollingvaccinationcount
+FROM `my-bigquery-project-11.coviddata.covid_deaths` cd
+join `my-bigquery-project-11.coviddata.covid_vaccinations` cv 
+  on cd.location = cv.location and cd.date = cv.date
+where cd.continent is not null
+--order by 2,3
+)
+select *, (rollingvaccinationcount/population)*100 from PopvsVac
+
+
+
+#temp table
+
+Create Temp Table PercentPopulationVaccinated AS
+SELECT cd.continent, cd.location, cd.date, cd.population, cv.new_vaccinations, sum(cast(cv.new_vaccinations as int)) OVER (PARTITION BY cd.location order by cd.location, cd.date) as rollingvaccinationcount
+FROM `my-bigquery-project-11.coviddata.covid_deaths` cd
+join `my-bigquery-project-11.coviddata.covid_vaccinations` cv 
+  on cd.location = cv.location and cd.date = cv.date
+where cd.continent is not null;
+##select *, (rollingvaccinationcount/population)*100 from PercentPopulationVaccinated
+
+
+##CREATING VIEW TO STORE DATA FOR LATER VISUALIZATIONS
+
+Create View my-bigquery-project-11.coviddata.PercentPopulationVaccinated AS
+SELECT cd.continent, cd.location, cd.date, cd.population, cv.new_vaccinations, sum(cast(cv.new_vaccinations as int)) OVER (PARTITION BY cd.location order by cd.location, cd.date) as rollingvaccinationcount
+FROM `my-bigquery-project-11.coviddata.covid_deaths` cd
+join `my-bigquery-project-11.coviddata.covid_vaccinations` cv 
+  on cd.location = cv.location and cd.date = cv.date
+where cd.continent is not null;
+
+
+select *, (rollingvaccinationcount/population)*100 from my-bigquery-project-11.coviddata.PercentPopulationVaccinated
